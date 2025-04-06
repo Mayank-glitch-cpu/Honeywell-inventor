@@ -1,0 +1,4 @@
+# do not push the .env file
+.env
+#do not add venv    
+venv/
