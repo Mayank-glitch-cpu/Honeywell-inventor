@@ -30,10 +30,11 @@ echo -e "\n${CYAN}Available setup options:${NC}"
 echo -e "${YELLOW}1. Create TwinMaker workspace (run.sh)${NC}"
 echo -e "${YELLOW}2. Create IoT SiteWise model (run-sitewise-model.sh)${NC}"
 echo -e "${YELLOW}3. Create IoT SiteWise asset (run-sitewise-asset.sh)${NC}"
-echo -e "${YELLOW}4. Full setup: TwinMaker + SiteWise model + asset${NC}"
-echo -e "${YELLOW}5. Exit${NC}"
+echo -e "${YELLOW}4. Create TwinMaker motor entity (run-twinmaker-entities.sh)${NC}"
+echo -e "${YELLOW}5. Full setup: TwinMaker + SiteWise model + asset + motor entity${NC}"
+echo -e "${YELLOW}6. Exit${NC}"
 
-read -p "Select an option (1-5): " option
+read -p "Select an option (1-6): " option
 
 case $option in
     1)
@@ -85,11 +86,27 @@ case $option in
         ./run-sitewise-asset.sh
         ;;
     4)
-        # Full setup: TwinMaker + SiteWise model + asset
+        # Run TwinMaker motor entity setup
+        echo -e "\n${CYAN}Running TwinMaker motor entity setup...${NC}"
+        
+        # First check if the script exists
+        if [ ! -f "run-twinmaker-entities.sh" ]; then
+            echo -e "${RED}Error: run-twinmaker-entities.sh not found!${NC}"
+            exit 1
+        fi
+        
+        # Make it executable if it isn't
+        chmod +x run-twinmaker-entities.sh
+        
+        # Run the script
+        ./run-twinmaker-entities.sh
+        ;;
+    5)
+        # Full setup: TwinMaker + SiteWise model + asset + motor entity
         echo -e "\n${CYAN}Running full setup sequence...${NC}"
         
         # Check if all necessary scripts exist
-        for script in "run.sh" "run-sitewise-model.sh" "run-sitewise-asset.sh"; do
+        for script in "run.sh" "run-sitewise-model.sh" "run-sitewise-asset.sh" "run-twinmaker-entities.sh"; do
             if [ ! -f "$script" ]; then
                 echo -e "${RED}Error: $script not found!${NC}"
                 exit 1
@@ -99,7 +116,7 @@ case $option in
         done
         
         # Step 1: Run TwinMaker workspace setup
-        echo -e "\n${CYAN}Step 1/3: Creating TwinMaker workspace${NC}"
+        echo -e "\n${CYAN}Step 1/4: Creating TwinMaker workspace${NC}"
         echo -e "${CYAN}----------------------------------------${NC}"
         ./run.sh
         
@@ -110,7 +127,7 @@ case $option in
         fi
         
         # Step 2: Run IoT SiteWise model setup
-        echo -e "\n${CYAN}Step 2/3: Creating IoT SiteWise model${NC}"
+        echo -e "\n${CYAN}Step 2/4: Creating IoT SiteWise model${NC}"
         echo -e "${CYAN}----------------------------------------${NC}"
         # Run the model script and capture the model ID
         model_output=$(./run-sitewise-model.sh)
@@ -129,7 +146,7 @@ case $option in
         fi
         
         # Step 3: Run IoT SiteWise asset setup
-        echo -e "\n${CYAN}Step 3/3: Creating IoT SiteWise asset${NC}"
+        echo -e "\n${CYAN}Step 3/4: Creating IoT SiteWise asset${NC}"
         echo -e "${CYAN}---------------------------------------${NC}"
         if [ -n "$model_id" ]; then
             # If we have the model ID, use it
@@ -139,9 +156,27 @@ case $option in
             ./run-sitewise-asset.sh
         fi
         
+        # Check if the previous step was successful
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}IoT SiteWise asset setup failed. Continuing with TwinMaker entity creation.${NC}"
+        fi
+
+        # Step 4: Run TwinMaker motor entity setup
+        echo -e "\n${CYAN}Step 4/4: Creating TwinMaker motor entity${NC}"
+        echo -e "${CYAN}--------------------------------------------------${NC}"
+        # Get the workspace ID from the .env file or use default
+        WORKSPACE_ID=$(grep "WORKSPACE_ID" .env 2>/dev/null | cut -d "=" -f 2)
+        if [ -z "$WORKSPACE_ID" ]; then
+            WORKSPACE_ID="SimpleFactoryTwin"
+        fi
+        
+        # Run the entities script with the workspace ID
+        ./run-twinmaker-entities.sh "$WORKSPACE_ID"
+        
         echo -e "\n${GREEN}Full setup sequence completed!${NC}"
+        echo -e "${GREEN}Created motor-scripted-1 entity in TwinMaker that corresponds to the SiteWise asset${NC}"
         ;;
-    5)
+    6)
         # Exit
         echo -e "${YELLOW}Exiting. No changes were made.${NC}"
         exit 0

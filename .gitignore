@@ -3,3 +3,7 @@
 #do not add venv    
 venv/
 venv-sitewise/
+# Ignore all Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
