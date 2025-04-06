@@ -129,6 +129,7 @@
           "name": "Speed",
           "dataType": "DOUBLE",
           "unit": "RPM",
+          "alias": "motor_speed",
           "type": {
             "measurement": {}
           }
@@ -136,9 +137,17 @@
       ]
     },
     "asset": {
-      "name_template": "motor-scripted-{index}",
-      "index": 1,
-      "serial_template": "MOTOR-SCRIPTED-{asset_id}"
+      "name_template": "motor12-{index}",
+      "index": 2,
+      "serial_template": "MOTOR-SCRIPTED-{asset_id}",
+      "alias_template": "{model_name}/{asset_name}",
+      "asset_alias": "{model_name}/{asset_name}",
+      "property_aliases": {
+        "Speed": "{model_name}/{asset_name}/speed",
+        "Serial": "{model_name}/{asset_name}/serial",
+        "speed": "{model_name}/{asset_name}/speed"
+      },
+      "notification_state": "ENABLED"
     }
   },
   "environment": {
