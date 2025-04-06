@@ -2,3 +2,4 @@
 .env
 #do not add venv    
 venv/
+venv-sitewise/
