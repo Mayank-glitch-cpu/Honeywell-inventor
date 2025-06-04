@@ -7,9 +7,39 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${CYAN}=======================================================${NC}"
-echo -e "${CYAN}     AWS IoT TwinMaker Motor Entity Creator            ${NC}"
-echo -e "${CYAN}=======================================================${NC}"
+# Parse arguments
+NON_INTERACTIVE=false
+FORCE_RECREATE=false
+WORKSPACE_ID=""
+
+# Parse command line options
+while [[ $# -gt 0 ]]; do
+  key="$1"
+  case $key in
+    --non-interactive)
+      NON_INTERACTIVE=true
+      shift
+      ;;
+    --force-recreate)
+      FORCE_RECREATE=true
+      shift
+      ;;
+    *)
+      # First non-flag argument is treated as workspace ID
+      if [[ -z "$WORKSPACE_ID" ]]; then
+        WORKSPACE_ID="$1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+# Only show banner in interactive mode
+if [ "$NON_INTERACTIVE" = false ]; then
+  echo -e "${CYAN}=======================================================${NC}"
+  echo -e "${CYAN}     AWS IoT TwinMaker Motor Entity Creator            ${NC}"
+  echo -e "${CYAN}=======================================================${NC}"
+fi
 
 # Function to check if a command exists
 command_exists() {
@@ -55,6 +85,14 @@ fi
 echo -e "${YELLOW}Checking AWS credentials...${NC}"
 if ! "$VENV_PATH/bin/python" -c "import boto3; boto3.client('sts').get_caller_identity()" &>/dev/null; then
     echo -e "${RED}Error: AWS credentials not found or not properly configured!${NC}"
+    
+    # In non-interactive mode, just exit with error
+    if [ "$NON_INTERACTIVE" = true ]; then
+        echo -e "${RED}Cannot proceed without AWS credentials in non-interactive mode.${NC}"
+        deactivate
+        exit 1
+    fi
+    
     echo -e "Please configure your AWS credentials using one of the following methods:"
     echo -e "1. Run ${CYAN}aws configure${NC}"
     echo -e "2. Set environment variables ${CYAN}AWS_ACCESS_KEY_ID${NC} and ${CYAN}AWS_SECRET_ACCESS_KEY${NC}"
@@ -90,6 +128,12 @@ fi
 # Ask for AWS region if not set
 AWS_REGION=$("$VENV_PATH/bin/python" -c "import boto3; import os; print(boto3.session.Session().region_name or os.environ.get('AWS_REGION', ''))" 2>/dev/null)
 if [ -z "$AWS_REGION" ]; then
+    if [ "$NON_INTERACTIVE" = true ]; then
+        echo -e "${RED}AWS region is not set and required in non-interactive mode.${NC}"
+        deactivate
+        exit 1
+    fi
+    
     echo -e "${YELLOW}AWS region is not set.${NC}"
     read -p "Enter the AWS region to use (e.g., us-east-1): " input_region
     
@@ -112,18 +156,19 @@ if [ ! -x "create-twinmaker-entities.py" ]; then
 fi
 
 # Get the workspace ID either from command line argument, environment, or prompt
-WORKSPACE_ID=""
-if [ "$#" -ge 1 ]; then
-    WORKSPACE_ID="$1"
-    echo -e "${GREEN}Using provided workspace ID: ${CYAN}$WORKSPACE_ID${NC}"
-elif [ -n "$WORKSPACE_ID" ]; then
-    echo -e "${GREEN}Using workspace ID from environment: ${CYAN}$WORKSPACE_ID${NC}"
-else
-    # Try to list available workspaces to help the user
-    echo -e "${YELLOW}No workspace ID provided. Attempting to list available TwinMaker workspaces...${NC}"
-    echo -e "${CYAN}This may take a few seconds...${NC}"
-    
-    WORKSPACE_LIST=$("$VENV_PATH/bin/python" -c "
+if [ -z "$WORKSPACE_ID" ]; then
+    if [ -n "$WORKSPACE_ID" ]; then
+        echo -e "${GREEN}Using workspace ID from environment: ${CYAN}$WORKSPACE_ID${NC}"
+    elif [ "$NON_INTERACTIVE" = true ]; then
+        # In non-interactive mode, use default workspace
+        WORKSPACE_ID="SimpleFactoryTwin"
+        echo -e "${GREEN}Using default workspace ID in non-interactive mode: ${CYAN}$WORKSPACE_ID${NC}"
+    else
+        # Try to list available workspaces to help the user
+        echo -e "${YELLOW}No workspace ID provided. Attempting to list available TwinMaker workspaces...${NC}"
+        echo -e "${CYAN}This may take a few seconds...${NC}"
+        
+        WORKSPACE_LIST=$("$VENV_PATH/bin/python" -c "
 import boto3
 try:
     client = boto3.client('iottwinmaker')
@@ -134,48 +179,74 @@ try:
 except Exception as e:
     print(f'Error listing workspaces: {e}')
 " 2>/dev/null)
-    
-    echo -e "${CYAN}$WORKSPACE_LIST${NC}"
-    echo ""
-    
-    # Default workspace ID based on other scripts
-    DEFAULT_WORKSPACE="SimpleFactoryTwin"
-    read -p "Enter the workspace ID to use (or press enter for default '$DEFAULT_WORKSPACE'): " WORKSPACE_ID
-    
-    if [ -z "$WORKSPACE_ID" ]; then
-        WORKSPACE_ID="$DEFAULT_WORKSPACE"
-        echo -e "${GREEN}Using default workspace ID: ${CYAN}$WORKSPACE_ID${NC}"
+        
+        echo -e "${CYAN}$WORKSPACE_LIST${NC}"
+        echo ""
+        
+        # Default workspace ID based on other scripts
+        DEFAULT_WORKSPACE="SimpleFactoryTwin"
+        read -p "Enter the workspace ID to use (or press enter for default '$DEFAULT_WORKSPACE'): " WORKSPACE_ID
+        
+        if [ -z "$WORKSPACE_ID" ]; then
+            WORKSPACE_ID="$DEFAULT_WORKSPACE"
+            echo -e "${GREEN}Using default workspace ID: ${CYAN}$WORKSPACE_ID${NC}"
+        fi
     fi
 fi
 
-# Explain what will happen
-echo -e "\n${CYAN}This script will create a component type and entity in the TwinMaker workspace ${YELLOW}$WORKSPACE_ID${NC}"
-echo -e "The following will be created:"
-echo -e " - ${YELLOW}Component Type:${NC} MotorComponentType"
-echo -e " - ${YELLOW}Entity:${NC} motor-scripted-1"
-
-# Ask for confirmation
-echo ""
-read -p "Do you want to proceed? (y/n): " confirm
-
-if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-    echo -e "\n${GREEN}Creating TwinMaker motor entity...${NC}"
+# Only ask for confirmation in interactive mode
+if [ "$NON_INTERACTIVE" = false ]; then
+    # Explain what will happen
+    echo -e "\n${CYAN}This script will create a component type and entity in the TwinMaker workspace ${YELLOW}$WORKSPACE_ID${NC}"
+    echo -e "The following will be created:"
+    echo -e " - ${YELLOW}Component Type:${NC} MotorComponentType"
+    echo -e " - ${YELLOW}Entity:${NC} motor-scripted-1"
     
-    # Run the entity creation script using Python from the virtual environment
-    "$VENV_PATH/bin/python" create-twinmaker-entities.py "$WORKSPACE_ID"
-    
-    # Check if the script executed successfully
-    if [ $? -eq 0 ]; then
-        echo -e "\n${GREEN}TwinMaker motor entity created successfully.${NC}"
-        echo -e "${GREEN}You can now view and interact with this entity in the AWS IoT TwinMaker console.${NC}"
-    else
-        echo -e "\n${RED}The script encountered an error during execution.${NC}"
+    # Ask for confirmation
+    echo ""
+    read -p "Do you want to proceed? (y/n): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo -e "${YELLOW}Entity creation cancelled.${NC}"
+        deactivate
+        exit 0
     fi
+fi
+
+echo -e "\n${GREEN}Creating TwinMaker motor entity...${NC}"
+
+# Build command with appropriate flags
+CMD_ARGS=()
+
+# Add workspace ID as a positional argument
+CMD_ARGS+=("$WORKSPACE_ID")
+
+# Add optional flags
+if [ "$NON_INTERACTIVE" = true ]; then
+    CMD_ARGS+=("--non-interactive")
+fi
+
+if [ "$FORCE_RECREATE" = true ]; then
+    CMD_ARGS+=("--force-recreate")
+fi
+
+# Run the entity creation script using Python from the virtual environment
+# Use explicit command instead of relying on command output redirection
+"$VENV_PATH/bin/python" create-twinmaker-entities.py "${CMD_ARGS[@]}"
+
+# Check if the script executed successfully
+if [ $? -eq 0 ]; then
+    echo -e "\n${GREEN}TwinMaker motor entity created successfully.${NC}"
+    echo -e "${GREEN}You can now view and interact with this entity in the AWS IoT TwinMaker console.${NC}"
 else
-    echo -e "${YELLOW}Entity creation cancelled.${NC}"
+    echo -e "\n${RED}The script encountered an error during execution.${NC}"
+    deactivate
+    exit 1
 fi
 
 # Deactivate virtual environment
 deactivate
 
-echo -e "${CYAN}=======================================================${NC}"
+# Only show footer in interactive mode
+if [ "$NON_INTERACTIVE" = false ]; then
+    echo -e "${CYAN}=======================================================${NC}"
+fi

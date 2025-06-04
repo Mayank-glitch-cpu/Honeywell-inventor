@@ -164,29 +164,147 @@ if [ ! -x "create-iotsitewise-model.py" ]; then
     chmod +x create-iotsitewise-model.py
 fi
 
-# Explain what will happen
-echo -e "\n${CYAN}This script will create a new IoT SiteWise model named 'Motor-scripted' with:${NC}"
-echo -e " - ${YELLOW}Attribute:${NC} Serial Number (String type)"
-echo -e " - ${YELLOW}Measurement:${NC} Speed (Double type, RPM unit)"
+# Get available model types from config.json
+MODEL_TYPES=$("$VENV_PATH/bin/python" -c "
+import json
+try:
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    models = config.get('sitewise', {}).get('models', {})
+    if models:
+        print('\\n'.join(models.keys()))
+    else:
+        print('No model types found in config.json')
+except Exception as e:
+    print(f'Error reading config.json: {e}')
+")
+
+# Check if we got any model types
+if [[ "$MODEL_TYPES" == *"Error"* || "$MODEL_TYPES" == "No model types found"* ]]; then
+    echo -e "${RED}Error: Could not find model types in config.json.${NC}"
+    echo -e "${YELLOW}Please ensure your config.json is properly set up with 'sitewise.models' section.${NC}"
+    deactivate
+    exit 1
+fi
+
+# Convert the newline-separated string to an array
+IFS=$'\n' read -d '' -r -a MODEL_TYPE_ARRAY <<< "$MODEL_TYPES"
+
+# Display available model types
+echo -e "\n${CYAN}Available Cookie Factory Models:${NC}"
+for i in "${!MODEL_TYPE_ARRAY[@]}"; do
+    INDEX=$((i+1))
+    MODEL_TYPE="${MODEL_TYPE_ARRAY[$i]}"
+    
+    # Get model name and description from config
+    MODEL_INFO=$("$VENV_PATH/bin/python" -c "
+import json
+try:
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    model = config.get('sitewise', {}).get('models', {}).get('$MODEL_TYPE', {})
+    print(f\"{model.get('name', '$MODEL_TYPE')}|{model.get('description', 'No description')}|{len(model.get('properties', []))}\" )
+except Exception as e:
+    print(f'Unknown|Error reading model info: {e}|0')
+")
+    
+    # Parse the model info
+    IFS='|' read -r MODEL_NAME MODEL_DESC PROP_COUNT <<< "$MODEL_INFO"
+    
+    echo -e "${GREEN}$INDEX.${NC} ${CYAN}$MODEL_NAME${NC} ($MODEL_TYPE)"
+    echo -e "   ${YELLOW}Description:${NC} $MODEL_DESC"
+    echo -e "   ${YELLOW}Properties:${NC} $PROP_COUNT defined"
+done
+
+# Ask user to select a model type
+echo -e "\n${YELLOW}Select a model type to create:${NC}"
+read -p "Enter the number (1-${#MODEL_TYPE_ARRAY[@]}): " MODEL_CHOICE
+
+# Validate input
+if ! [[ "$MODEL_CHOICE" =~ ^[0-9]+$ ]] || [ "$MODEL_CHOICE" -lt 1 ] || [ "$MODEL_CHOICE" -gt "${#MODEL_TYPE_ARRAY[@]}" ]; then
+    echo -e "${RED}Invalid choice. Exiting.${NC}"
+    deactivate
+    exit 1
+fi
+
+# Get the selected model type
+SELECTED_MODEL_TYPE="${MODEL_TYPE_ARRAY[$((MODEL_CHOICE-1))]}"
+echo -e "\n${GREEN}Selected model type: ${CYAN}$SELECTED_MODEL_TYPE${NC}"
+
+# Get model details for display
+MODEL_DETAILS=$("$VENV_PATH/bin/python" -c "
+import json
+try:
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    model = config.get('sitewise', {}).get('models', {}).get('$SELECTED_MODEL_TYPE', {})
+    properties = model.get('properties', [])
+    
+    model_info = {
+        'name': model.get('name', 'Unknown'),
+        'desc': model.get('description', 'No description'),
+        'properties': []
+    }
+    
+    for prop in properties:
+        prop_type = 'Attribute' if 'attribute' in prop.get('type', {}) else 'Measurement' if 'measurement' in prop.get('type', {}) else 'Unknown'
+        unit = prop.get('unit', 'None')
+        unit_display = f', {unit}' if unit != 'None' else ''
+        
+        model_info['properties'].append({
+            'name': prop.get('name', 'Unnamed'),
+            'type': prop_type,
+            'data_type': prop.get('dataType', 'Unknown'),
+            'unit_display': unit_display
+        })
+    
+    print(json.dumps(model_info))
+except Exception as e:
+    print('{\"error\": \"' + str(e) + '\"}')
+")
+
+# Extract model name and description
+MODEL_NAME=$(echo "$MODEL_DETAILS" | "$VENV_PATH/bin/python" -c "import sys, json; print(json.load(sys.stdin).get('name', 'Unknown'))")
+MODEL_DESC=$(echo "$MODEL_DETAILS" | "$VENV_PATH/bin/python" -c "import sys, json; print(json.load(sys.stdin).get('desc', 'No description'))")
+
+# Display model details
+echo -e "\n${CYAN}Model Details:${NC}"
+echo -e "${YELLOW}Name:${NC} $MODEL_NAME"
+echo -e "${YELLOW}Description:${NC} $MODEL_DESC"
+echo -e "${YELLOW}Properties:${NC}"
+
+# Display model properties
+PROPERTIES=$(echo "$MODEL_DETAILS" | "$VENV_PATH/bin/python" -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for i, prop in enumerate(data.get('properties', []), 1):
+        print(f\"{i}. {prop['name']} ({prop['type']}, {prop['data_type']}{prop['unit_display']})\" )
+except Exception as e:
+    print(f'Error parsing properties: {e}')
+")
+
+echo -e "$PROPERTIES"
 
 # Ask for confirmation
 echo ""
-read -p "Do you want to proceed? (y/n): " confirm
+read -p "Do you want to proceed with creating this model? (y/n): " confirm
 
 if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-    echo -e "\n${GREEN}Creating IoT SiteWise Motor model...${NC}"
+    echo -e "\n${GREEN}Creating IoT SiteWise model for $MODEL_NAME...${NC}"
     
     # Run the IoT SiteWise model creation script using the Python from the virtual environment
-    MODEL_ID=$("$VENV_PATH/bin/python" create-iotsitewise-model.py | grep "Model ID:" | cut -d ":" -f 2 | tr -d ' ')
+    "$VENV_PATH/bin/python" create-iotsitewise-model.py "$SELECTED_MODEL_TYPE"
+    
+    # Extract the model ID from the output
+    MODEL_ID=$(echo "$("$VENV_PATH/bin/python" create-iotsitewise-model.py "$SELECTED_MODEL_TYPE")" | grep -o "Model ID: [a-zA-Z0-9\-]*" | cut -d " " -f 3)
     
     # Check if the script executed successfully
-    if [ $? -eq 0 ]; then
+    if [ $? -eq 0 ] && [ ! -z "$MODEL_ID" ]; then
         echo -e "\n${GREEN}Model creation completed successfully.${NC}"
-        if [ ! -z "$MODEL_ID" ]; then
-            echo -e "${GREEN}Model ID: ${CYAN}$MODEL_ID${NC}"
-            echo -e "${GREEN}To create assets based on this model, run:${NC}"
-            echo -e "${CYAN}./run-sitewise-asset.sh $MODEL_ID${NC}"
-        fi
+        echo -e "${GREEN}Model ID: ${CYAN}$MODEL_ID${NC}"
+        echo -e "${GREEN}To create assets based on this model, run:${NC}"
+        echo -e "${CYAN}./run-sitewise-asset.sh $MODEL_ID $SELECTED_MODEL_TYPE${NC}"
     else
         echo -e "\n${RED}The script encountered an error during execution.${NC}"
     fi
@@ -196,5 +314,4 @@ fi
 
 # Deactivate virtual environment
 deactivate
-
 echo -e "${CYAN}==============================================${NC}"

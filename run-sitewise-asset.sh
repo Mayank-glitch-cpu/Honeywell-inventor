@@ -27,7 +27,7 @@ validate_aws_id() {
         echo -e "${RED}Error: $id_type ID is required and cannot be empty.${NC}"
         return 1
     fi
-
+    
     # Check the length
     if [ ${#id_value} -lt $min_length ]; then
         echo -e "${RED}Error: $id_type ID must be at least $min_length characters. Current length: ${#id_value}${NC}"
@@ -202,689 +202,134 @@ if ! validate_aws_id "Model" "$MODEL_ID"; then
     fi
 fi
 
-# Get model property information to help with alias configuration
-echo -e "\n${YELLOW}Fetching properties from the selected model...${NC}"
-MODEL_PROPERTIES=$("$VENV_PATH/bin/python" -c "
+# Check for the model type
+MODEL_TYPE=""
+if [ "$#" -ge 2 ]; then
+    MODEL_TYPE="$2"
+    echo -e "${GREEN}Using provided model type: ${CYAN}$MODEL_TYPE${NC}"
+else
+    # Try to determine model type from the model ID
+    echo -e "${YELLOW}No model type provided, attempting to determine from model ID...${NC}"
+    
+    MODEL_TYPE=$("$VENV_PATH/bin/python" -c "
 import boto3
-import json
 try:
     client = boto3.client('iotsitewise')
-    response = client.describe_asset_model(assetModelId='$MODEL_ID')
-    properties = response.get('assetModelProperties', [])
-    property_list = []
-    for prop in properties:
-        prop_type = 'attribute' if 'attribute' in prop.get('type', {}) else 'measurement' if 'measurement' in prop.get('type', {}) else 'unknown'
-        property_list.append({
-            'name': prop.get('name', 'Unknown'),
-            'type': prop_type,
-            'dataType': prop.get('dataType', 'Unknown'),
-            'unit': prop.get('unit', 'None')
-        })
-    print(json.dumps(property_list))
+    model = client.describe_asset_model(assetModelId='$MODEL_ID')
+    model_name = model['assetModelName'].lower()
+    
+    if 'dough' in model_name or 'mixer' in model_name:
+        print('dough_mixer')
+    elif 'cookie' in model_name and 'cutter' in model_name:
+        print('cookie_cutter')
+    elif 'conveyor' in model_name or 'oven' in model_name:
+        print('conveyor_oven')
+    else:
+        print('generic')
 except Exception as e:
-    print(f'Error fetching model properties: {e}')
-    print('[]')
+    print(f'Error determining model type: {e}')
 " 2>/dev/null)
-
-# Process the model properties JSON
-MODEL_PROPERTIES_PARSED=$(echo "$MODEL_PROPERTIES" | "$VENV_PATH/bin/python" -c "
-import sys
+    
+    if [[ "$MODEL_TYPE" == *"Error"* ]]; then
+        echo -e "${RED}Failed to determine model type: $MODEL_TYPE${NC}"
+        echo -e "${YELLOW}Available model types:${NC}"
+        
+        # List available model types from config
+        MODEL_TYPES=$("$VENV_PATH/bin/python" -c "
 import json
 try:
-    data = json.load(sys.stdin)
-    if data:
-        print('Available properties:')
-        for i, prop in enumerate(data, 1):
-            unit_display = f\", {prop['unit']}\" if prop['unit'] != 'None' else ''
-            # Ensure Speed property is properly marked as using RPM
-            if prop['name'] == 'Speed' and prop['unit'] == 'None':
-                unit_display = ', RPM (will be configured)'
-            print(f\"{i}. {prop['name']} ({prop['type']}, {prop['dataType']}{unit_display})\")
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    models = config.get('sitewise', {}).get('assets', {})
+    if models:
+        for i, model_type in enumerate(models.keys(), 1):
+            print(f'{i}. {model_type}')
     else:
-        print('No properties found or error fetching properties')
+        print('No model types found in config.json')
 except Exception as e:
-    print(f'Error parsing properties: {e}')
+    print(f'Error reading config.json: {e}')
 ")
-
-# Check if we actually got properties - if not, likely the model ID is incorrect
-if [[ "$MODEL_PROPERTIES" == *"Error fetching model properties"* ]]; then
-    echo -e "${RED}Failed to fetch model properties. This suggests the model ID may be incorrect.${NC}"
-    echo -e "${YELLOW}Would you like to:${NC}"
-    echo -e "1. Try another model ID"
-    echo -e "2. Proceed anyway (not recommended)"
-    echo -e "3. Quit"
-    
-    read -p "Enter your choice (1-3): " model_error_choice
-    
-    case $model_error_choice in
-        1)
-            echo -e "${YELLOW}Please enter a new model ID:${NC}"
-            read -p "> " MODEL_ID
-            if ! validate_aws_id "Model" "$MODEL_ID"; then
-                echo -e "${RED}The new model ID also appears invalid. Exiting.${NC}"
-                deactivate
-                exit 1
-            fi
-            ;;
-        2)
-            echo -e "${YELLOW}Proceeding with the original ID, but this will likely fail.${NC}"
-            ;;
-        *)
-            echo -e "${YELLOW}Exiting.${NC}"
-            deactivate
-            exit 1
-            ;;
-    esac
-else
-    echo -e "${CYAN}$MODEL_PROPERTIES_PARSED${NC}"
-fi
-
-# Function to create or update config.json with aliases
-update_config_with_aliases() {
-    local config_file="config.json"
-    local temp_file=$(mktemp)
-    local property_name="$1"
-    local alias_value="$2"
-    local model_name="$3"
-    local asset_name="$4"
-    
-    # Create config file if it doesn't exist
-    if [ ! -f "$config_file" ]; then
-        echo "{}" > "$config_file"
-    fi
-    
-    # Use python to update the config file with new alias
-    "$VENV_PATH/bin/python" -c "
-import json
-import os
-
-config_file = '$config_file'
-property_name = '$property_name'
-alias_value = '$alias_value'
-model_name = '$model_name'
-asset_name = '$asset_name'
-
-try:
-    # Load existing config
-    with open(config_file, 'r') as f:
-        config = json.load(f)
-    
-    # Ensure the structure exists
-    if 'sitewise' not in config:
-        config['sitewise'] = {}
-    if 'asset' not in config['sitewise']:
-        config['sitewise']['asset'] = {}
-    if 'property_aliases' not in config['sitewise']['asset']:
-        config['sitewise']['asset']['property_aliases'] = {}
         
-    # Add or update the basic alias pattern template
-    config['sitewise']['asset']['alias_template'] = '{model_name}/{asset_name}'
-    config['sitewise']['asset']['asset_alias'] = '{model_name}/{asset_name}'
-    
-    # Update or add the alias with the model_name/asset_name pattern
-    # Use lowercase for property name in the alias path for better compatibility
-    config['sitewise']['asset']['property_aliases'][property_name] = alias_value
-    
-    # If this is the Speed property, ensure it's set to RPM in the model config
-    if property_name == 'Speed' and 'model' in config['sitewise']:
-        for prop in config['sitewise']['model'].get('properties', []):
-            if prop.get('name') == 'Speed':
-                prop['unit'] = 'RPM'
-                break
-    
-    # Write back to the config file
-    with open(config_file, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    print(f'Updated config.json with alias for {property_name}: {alias_value.format(model_name=model_name.lower(), asset_name=asset_name.lower())}')
-except Exception as e:
-    print(f'Error updating config: {e}')
-"
-}
-
-# Function to ensure that Speed is set to RPM in config.json
-ensure_speed_has_rpm_unit() {
-    "$VENV_PATH/bin/python" -c "
-import json
-import os
-
-config_file = 'config.json'
-
-try:
-    # Load existing config
-    if not os.path.exists(config_file):
-        with open(config_file, 'w') as f:
-            json.dump({}, f)
-    
-    with open(config_file, 'r') as f:
-        config = json.load(f)
-    
-    # Ensure the structure exists
-    if 'sitewise' not in config:
-        config['sitewise'] = {}
-    if 'model' not in config['sitewise']:
-        config['sitewise']['model'] = {'properties': []}
-    
-    # Find Speed property in model config
-    speed_prop = None
-    for prop in config['sitewise']['model'].get('properties', []):
-        if prop.get('name') == 'Speed':
-            speed_prop = prop
-            break
-    
-    # If Speed property exists, set its unit to RPM
-    if speed_prop:
-        speed_prop['unit'] = 'RPM'
-        print('✅ Updated Speed property unit to RPM in config')
-    else:
-        # Create a default Speed property if not found
-        new_prop = {
-            'name': 'Speed',
-            'dataType': 'DOUBLE',
-            'unit': 'RPM',
-            'type': {
-                'measurement': {}
-            }
-        }
-        config['sitewise']['model']['properties'].append(new_prop)
-        print('✅ Added Speed property with RPM unit to config')
-    
-    # Write back to the config file
-    with open(config_file, 'w') as f:
-        json.dump(config, f, indent=2)
-except Exception as e:
-    print(f'Error updating Speed property in config: {e}')
-"
-}
-
-# Function to verify and update notification status for Speed property
-ensure_speed_notification_enabled() {
-    "$VENV_PATH/bin/python" -c "
-import json
-
-config_file = 'config.json'
-
-try:
-    # Load existing config
-    with open(config_file, 'r') as f:
-        config = json.load(f)
-    
-    # Add notification enabled flag
-    if 'sitewise' in config:
-        if 'asset' not in config['sitewise']:
-            config['sitewise']['asset'] = {}
+        echo -e "${CYAN}$MODEL_TYPES${NC}"
+        read -p "Enter the model type to use: " MODEL_TYPE
         
-        # Explicitly set notification_state to ENABLED
-        config['sitewise']['asset']['notification_state'] = 'ENABLED'
-        
-        # Write back to the config file
-        with open(config_file, 'w') as f:
-            json.dump(config, f, indent=2)
-        
-        print('✅ Set notification state to ENABLED in config')
-except Exception as e:
-    print(f'Error setting notification state in config: {e}')
-"
-}
-
-# Get the model name for alias creation
-MODEL_NAME=$("$VENV_PATH/bin/python" -c "
-import boto3
-try:
-    client = boto3.client('iotsitewise')
-    response = client.describe_asset_model(assetModelId='$MODEL_ID')
-    print(response.get('assetModelName', 'UnknownModel'))
-except Exception as e:
-    print('UnknownModel')
-" 2>/dev/null)
-
-# If model name couldn't be fetched, double-check the problem
-if [[ "$MODEL_NAME" == "UnknownModel" ]]; then
-    echo -e "${RED}Could not retrieve the model name. This suggests the model ID is incorrect.${NC}"
-    read -p "Do you want to proceed anyway? (y/n): " proceed_unknown
-    
-    if [[ "$proceed_unknown" != "y" && "$proceed_unknown" != "Y" ]]; then
-        echo -e "${YELLOW}Exiting.${NC}"
-        deactivate
-        exit 1
-    fi
-fi
-
-# Configure aliases for properties
-echo -e "\n${YELLOW}Would you like to configure aliases for the asset properties? (y/n): ${NC}"
-read -p "" configure_aliases
-
-if [[ "$configure_aliases" == "y" || "$configure_aliases" == "Y" ]]; then
-    # Check if properties were fetched successfully
-    if [[ "$MODEL_PROPERTIES" != *"Error"* && "$MODEL_PROPERTIES" != "[]" ]]; then
-        # Convert the JSON to Python list for processing
-        PROPERTIES_ARRAY=($("$VENV_PATH/bin/python" -c "
-import json
-try:
-    props = json.loads('$MODEL_PROPERTIES')
-    for prop in props:
-        print(prop['name'])
-except Exception as e:
-    print(f'Error processing properties: {e}')
-"))
-        
-        echo -e "\n${CYAN}Configure aliases for asset properties${NC}"
-        echo -e "${YELLOW}Aliases are used to identify properties in AWS IoT Core and other services${NC}"
-        echo -e "${YELLOW}Using alias format: model_name/asset_name/property_name${NC}"
-        
-        # Get asset name for aliases
-        echo -e "\n${CYAN}Enter a name for this asset (e.g., 'motor1'): ${NC}"
-        read -p "" asset_name
-        
-        if [ -z "$asset_name" ]; then
-            asset_name="motor-scripted-1"
-            echo -e "${YELLOW}Using default asset name: '$asset_name'${NC}"
+        if [ -z "$MODEL_TYPE" ]; then
+            echo -e "${YELLOW}No model type provided. Will use generic approach.${NC}"
+            MODEL_TYPE="generic"
         fi
-        
-        # Update the asset name template in config.json
-        "$VENV_PATH/bin/python" -c "
-import json
-import os
-
-config_file = 'config.json'
-asset_name = '$asset_name'
-
-try:
-    # Load existing config
-    if not os.path.exists(config_file):
-        with open(config_file, 'w') as f:
-            json.dump({}, f)
-    
-    with open(config_file, 'r') as f:
-        config = json.load(f)
-    
-    # Ensure the structure exists
-    if 'sitewise' not in config:
-        config['sitewise'] = {}
-    if 'asset' not in config['sitewise']:
-        config['sitewise']['asset'] = {}
-    
-    # Update or add the asset name template
-    config['sitewise']['asset']['name_template'] = asset_name + '-{index}'
-    config['sitewise']['asset']['index'] = 1
-    config['sitewise']['asset']['asset_alias'] = '{model_name}/{asset_name}'
-    config['sitewise']['asset']['notification_state'] = 'ENABLED'
-    
-    # Write back to the config file
-    with open(config_file, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    print(f'Updated config.json with asset name template: {asset_name}-{{index}}')
-except Exception as e:
-    print(f'Error updating config: {e}')
-"
-        
-        # Configure aliases for each property
-        for property_name in "${PROPERTIES_ARRAY[@]}"; do
-            # Skip any error messages that might have been printed
-            if [[ "$property_name" == *"Error"* ]]; then
-                continue
-            fi
-            
-            # Generate a standardized alias using model_name/asset_name pattern
-            # Use lowercase property name in the path for better compatibility
-            alias_template="{model_name}/{asset_name}/${property_name,,}"
-            
-            echo -e "\n${CYAN}Property: ${YELLOW}$property_name${NC}"
-            echo -e "${CYAN}Using alias format: ${GREEN}$alias_template${NC}"
-            
-            # Update the config.json with the alias
-            update_config_with_aliases "$property_name" "$alias_template" "$MODEL_NAME" "$asset_name"
-            
-            # Special handling for Speed property to ensure it's in RPM
-            if [[ "$property_name" == "Speed" ]]; then
-                echo -e "${GREEN}✅ Speed property will be configured with RPM units${NC}"
-                ensure_speed_has_rpm_unit
-                ensure_speed_notification_enabled
-            fi
-        done
-        
-        echo -e "\n${GREEN}All aliases have been configured and saved to config.json${NC}"
     else
-        echo -e "${RED}Could not fetch property information from the model. Manual alias configuration required.${NC}"
-        
-        echo -e "\n${YELLOW}Would you like to manually configure aliases? (y/n): ${NC}"
-        read -p "" manual_aliases
-        
-        if [[ "$manual_aliases" == "y" || "$manual_aliases" == "Y" ]]; then
-            echo -e "\n${CYAN}Enter a name for this asset (e.g., 'motor1'): ${NC}"
-            read -p "" asset_name
-            
-            if [ -z "$asset_name" ]; then
-                asset_name="motor-scripted-1"
-                echo -e "${YELLOW}Using default asset name: '$asset_name'${NC}"
-            fi
-            
-            while true; do
-                echo -e "\n${CYAN}Enter property name (or leave empty to finish): ${NC}"
-                read -p "" property_name
-                
-                if [ -z "$property_name" ]; then
-                    break
-                fi
-                
-                # Generate a standardized alias using model_name/asset_name pattern
-                # Use lowercase property name in the path for better compatibility
-                alias_template="{model_name}/{asset_name}/${property_name,,}"
-                
-                echo -e "${CYAN}Using alias format: ${GREEN}$alias_template${NC}"
-                
-                update_config_with_aliases "$property_name" "$alias_template" "$MODEL_NAME" "$asset_name"
-                
-                # Special handling for Speed property to ensure it's in RPM
-                if [[ "$property_name" == "Speed" ]]; then
-                    echo -e "${GREEN}✅ Speed property will be configured with RPM units${NC}"
-                    ensure_speed_has_rpm_unit
-                    ensure_speed_notification_enabled
-                fi
-            done
-            
-            echo -e "\n${GREEN}Manual alias configuration completed${NC}"
-        else
-            echo -e "${YELLOW}Skipping alias configuration${NC}"
-        fi
+        echo -e "${GREEN}Detected model type: ${CYAN}$MODEL_TYPE${NC}"
     fi
-else
-    # Even if user skips configuration, ensure we have a basic asset alias set up
-    echo -e "${YELLOW}Setting up default configuration...${NC}"
-    "$VENV_PATH/bin/python" -c "
-import json
-import os
-
-config_file = 'config.json'
-
-try:
-    # Load existing config
-    if not os.path.exists(config_file):
-        with open(config_file, 'w') as f:
-            json.dump({}, f)
-    
-    with open(config_file, 'r') as f:
-        config = json.load(f)
-    
-    # Ensure the structure exists
-    if 'sitewise' not in config:
-        config['sitewise'] = {}
-    if 'asset' not in config['sitewise']:
-        config['sitewise']['asset'] = {}
-    
-    # Always ensure we have an asset alias format defined
-    config['sitewise']['asset']['asset_alias'] = '{model_name}/{asset_name}'
-    config['sitewise']['asset']['notification_state'] = 'ENABLED'
-    
-    # Set default property aliases if not already defined
-    if 'property_aliases' not in config['sitewise']['asset']:
-        config['sitewise']['asset']['property_aliases'] = {
-            'Speed': '{model_name}/{asset_name}/speed',
-            'Serial': '{model_name}/{asset_name}/serial'
-        }
-    
-    # Make sure Speed is set to RPM units if it exists
-    if 'model' in config['sitewise'] and 'properties' in config['sitewise']['model']:
-        speed_found = False
-        for prop in config['sitewise']['model']['properties']:
-            if prop.get('name') == 'Speed':
-                prop['unit'] = 'RPM'
-                speed_found = True
-                break
-        
-        # If Speed property doesn't exist, add it
-        if not speed_found:
-            if 'properties' not in config['sitewise']['model']:
-                config['sitewise']['model']['properties'] = []
-            
-            config['sitewise']['model']['properties'].append({
-                'name': 'Speed',
-                'dataType': 'DOUBLE',
-                'unit': 'RPM',
-                'type': {
-                    'measurement': {}
-                }
-            })
-    
-    # Write back to the config file
-    with open(config_file, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    print('✅ Updated config.json with basic asset and property settings')
-except Exception as e:
-    print(f'Error updating config: {e}')
-"
-    echo -e "${YELLOW}Using default configuration with model_name/asset_name alias pattern and RPM units for Speed${NC}"
 fi
 
-# Create a special Python script to verify and fix property configuration after asset creation
-cat > verify_asset_config.py << 'EOL'
-#!/usr/bin/env python3
-import boto3
-import sys
+# Check if we have valid model type in our config
+if [ ! -z "$MODEL_TYPE" ] && [ "$MODEL_TYPE" != "generic" ]; then
+    CONFIG_CHECK=$("$VENV_PATH/bin/python" -c "
 import json
-import time
-from botocore.exceptions import ClientError
-
-def load_config():
-    """Load configuration from config.json file"""
-    try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-            return config.get('sitewise', {})
-    except Exception as e:
-        print(f"Warning: Could not load config file: {e}")
-        return {}
-
-def verify_and_fix_property_settings(asset_id):
-    """Verify and fix property settings for an asset"""
-    client = boto3.client('iotsitewise')
-    success = True
-    
-    try:
-        # Get asset properties
-        response = client.list_asset_properties(assetId=asset_id)
-        properties = response.get('assetPropertySummaries', [])
-        
-        config = load_config()
-        asset_config = config.get('asset', {})
-        property_aliases = asset_config.get('property_aliases', {})
-        notification_state = asset_config.get('notification_state', 'ENABLED')
-        
-        print(f"\nVerifying configuration for {len(properties)} properties...")
-        
-        for prop in properties:
-            prop_id = prop.get('id')
-            # Safely get property name or fetch it from detailed property info
-            if 'name' in prop:
-                prop_name = prop['name']
-            else:
-                # Get detailed property information to find the name
-                try:
-                    prop_details = client.describe_asset_property(
-                        assetId=asset_id,
-                        propertyId=prop_id
-                    )
-                    prop_name = prop_details.get('assetProperty', {}).get('name', f"Property-{prop_id[-8:]}")
-                except Exception as e:
-                    prop_name = f"Property-{prop_id[-8:]}"  # Use a default name with part of the ID
-                    print(f"Warning: Could not get property name for ID {prop_id}: {e}")
-            
-            # Get detailed property information
-            try:
-                prop_details = client.describe_asset_property(
-                    assetId=asset_id,
-                    propertyId=prop_id
-                )
-                
-                property_alias = prop_details.get('assetProperty', {}).get('alias')
-                property_unit = prop_details.get('assetProperty', {}).get('unit')
-                property_notification = prop_details.get('assetProperty', {}).get('notification', {}).get('state')
-                
-                print(f"\nProperty: {prop_name}")
-                print(f"  Current alias: {property_alias}")
-                print(f"  Current unit: {property_unit}")
-                print(f"  Current notification state: {property_notification}")
-                
-                # For Speed property, verify it has RPM unit
-                if prop_name == 'Speed':
-                    expected_unit = 'RPM'
-                    if property_unit != expected_unit:
-                        print(f"  Fixing unit: {property_unit} -> {expected_unit}")
-                        try:
-                            client.update_asset_property(
-                                assetId=asset_id,
-                                propertyId=prop_id,
-                                propertyUnit=expected_unit
-                            )
-                            print("  ✅ Unit updated to RPM")
-                        except ClientError as e:
-                            print(f"  ❌ Error updating unit: {e}")
-                            success = False
-                
-                # Verify it has the expected alias
-                if prop_name in property_aliases:
-                    # Get the expected alias from config
-                    asset_details = client.describe_asset(assetId=asset_id)
-                    asset_name = asset_details['assetName']
-                    model_details = client.describe_asset_model(assetModelId=asset_details['assetModelId'])
-                    model_name = model_details['assetModelName']
-                    
-                    expected_alias = property_aliases[prop_name].format(
-                        model_name=model_name.lower(),
-                        asset_name=asset_name.lower()
-                    )
-                    
-                    if property_alias != expected_alias:
-                        print(f"  Fixing alias: {property_alias} -> {expected_alias}")
-                        try:
-                            client.update_asset_property(
-                                assetId=asset_id,
-                                propertyId=prop_id,
-                                propertyAlias=expected_alias
-                            )
-                            print(f"  ✅ Alias updated to {expected_alias}")
-                        except ClientError as e:
-                            print(f"  ❌ Error updating alias: {e}")
-                            success = False
-                
-                # Verify notification state is ENABLED
-                if property_notification != notification_state:
-                    print(f"  Fixing notification state: {property_notification} -> {notification_state}")
-                    try:
-                        client.update_asset_property(
-                            assetId=asset_id,
-                            propertyId=prop_id,
-                            propertyNotificationState=notification_state
-                        )
-                        print(f"  ✅ Notification state updated to {notification_state}")
-                    except ClientError as e:
-                        print(f"  ❌ Error updating notification state: {e}")
-                        success = False
-                
-            except ClientError as e:
-                print(f"  ❌ Error getting property details for {prop_name}: {e}")
-                success = False
-                
-        # Double-check all properties again after updates
-        if success:
-            print("\nVerifying final configuration...")
-            properties = client.list_asset_properties(assetId=asset_id).get('assetPropertySummaries', [])
-            for prop in properties:
-                prop_details = client.describe_asset_property(
-                    assetId=asset_id,
-                    propertyId=prop['id']
-                )
-                property_alias = prop_details.get('assetProperty', {}).get('alias', 'None')
-                property_unit = prop_details.get('assetProperty', {}).get('unit', 'None')
-                property_notification = prop_details.get('assetProperty', {}).get('notification', {}).get('state', 'DISABLED')
-                
-                print(f"- {prop['name']}: Alias = {property_alias}, Unit = {property_unit}, Notification = {property_notification}")
-                
-        return success
-            
-    except ClientError as e:
-        print(f"Error verifying asset properties: {e}")
-        return False
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python verify_asset_config.py <asset_id>")
-        sys.exit(1)
-    
-    asset_id = sys.argv[1]
-    print(f"Verifying and fixing property settings for asset ID: {asset_id}")
-    
-    success = verify_and_fix_property_settings(asset_id)
-    
-    if success:
-        print("\n✅ All property settings have been verified and fixed if necessary")
+try:
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    if '$MODEL_TYPE' in config.get('sitewise', {}).get('assets', {}):
+        print('valid')
     else:
-        print("\n⚠️ Some property settings could not be fixed. Check the messages above for details.")
-EOL
-
-# Make the verification script executable
-chmod +x verify_asset_config.py
-
-# Explain what will happen
-echo -e "\n${CYAN}This script will create a new IoT SiteWise asset based on the model with ID ${YELLOW}$MODEL_ID${NC}"
-echo -e "The asset will be assigned a unique serial number automatically."
-echo -e "The asset will have an alias in the format: ${GREEN}model_name/asset_name${NC}"
-echo -e "Property aliases will follow the pattern: ${GREEN}model_name/asset_name/property_name${NC}"
-echo -e "The Speed property will be configured with ${GREEN}RPM${NC} units."
-echo -e "MQTT notifications will be ${GREEN}ENABLED${NC} for all properties."
-
-# Ask for confirmation
-echo ""
-read -p "Do you want to proceed? (y/n): " confirm
-
-if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-    echo -e "\n${GREEN}Creating IoT SiteWise asset...${NC}"
+        print('invalid')
+except Exception as e:
+    print(f'error: {e}')
+")
     
-    # Run the IoT SiteWise asset creation script using Python from the virtual environment
-    ASSET_OUTPUT=$("$VENV_PATH/bin/python" create-iotsitewise-asset.py "$MODEL_ID")
-    echo "$ASSET_OUTPUT"
+    if [ "$CONFIG_CHECK" != "valid" ]; then
+        echo -e "${YELLOW}Warning: Model type '$MODEL_TYPE' not found in config. Will use generic approach.${NC}"
+        MODEL_TYPE="generic"
+    fi
+fi
+
+# Execute the Python script to create a new asset based on the model
+echo -e "\n${GREEN}Creating IoT SiteWise asset based on model ID: ${CYAN}$MODEL_ID${NC}"
+if [ ! -z "$MODEL_TYPE" ] && [ "$MODEL_TYPE" != "generic" ]; then
+    echo -e "${GREEN}Using model type: ${CYAN}$MODEL_TYPE${NC}"
+    "$VENV_PATH/bin/python" create-iotsitewise-asset.py "$MODEL_ID" "$MODEL_TYPE"
+else
+    "$VENV_PATH/bin/python" create-iotsitewise-asset.py "$MODEL_ID"
+fi
+
+# Get the new asset ID from the output
+ASSET_ID=$("$VENV_PATH/bin/python" create-iotsitewise-asset.py "$MODEL_ID" "$MODEL_TYPE" 2>/dev/null | grep -o "Asset ID: [a-zA-Z0-9\-]*" | cut -d " " -f 3)
+
+if [ ! -z "$ASSET_ID" ]; then
+    echo -e "\n${GREEN}Asset creation completed.${NC}"
     
-    # Extract the asset ID from the output
-    ASSET_ID=$(echo "$ASSET_OUTPUT" | grep -o "Asset ID: [a-zA-Z0-9\-]*" | cut -d " " -f 3)
-    
-    # Check if the script executed successfully
-    if [ $? -eq 0 ] && [ -n "$ASSET_ID" ]; then
-        echo -e "\n${GREEN}Asset creation completed with ID: ${CYAN}$ASSET_ID${NC}"
+    # Configure aliases for the asset
+    echo -e "${YELLOW}Setting up aliases for the asset...${NC}"
+    if [ -f "set_aliases.py" ]; then
+        # Make it executable
+        chmod +x set_aliases.py
         
-        # Run the verification script to ensure all properties are configured correctly
-        echo -e "\n${YELLOW}Running additional verification to ensure all properties are configured correctly...${NC}"
-        "$VENV_PATH/bin/python" verify_asset_config.py "$ASSET_ID"
-        
-        # Run the set_aliases script to set all the aliases
-        echo -e "\n${YELLOW}Configuring aliases for asset properties using set_aliases.py...${NC}"
-        if [ -f "set_aliases.py" ]; then
+        if [ ! -z "$MODEL_TYPE" ] && [ "$MODEL_TYPE" != "generic" ]; then
+            echo -e "${GREEN}Running: python set_aliases.py --asset-id $ASSET_ID --model-type $MODEL_TYPE${NC}"
+            "$VENV_PATH/bin/python" set_aliases.py --asset-id "$ASSET_ID" --model-type "$MODEL_TYPE"
+        else
+            echo -e "${GREEN}Running: python set_aliases.py --asset-id $ASSET_ID${NC}"
             "$VENV_PATH/bin/python" set_aliases.py --asset-id "$ASSET_ID"
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}Successfully set aliases using set_aliases.py${NC}"
-            else
-                echo -e "${RED}Failed to set aliases using set_aliases.py${NC}"
-            fi
-        else
-            echo -e "${RED}set_aliases.py script not found. Skipping alias configuration with this script.${NC}"
         fi
-        
-        echo -e "\n${GREEN}The asset and its properties have been configured with the model_name/asset_name alias pattern.${NC}"
-        echo -e "${GREEN}Speed property has been configured with RPM units.${NC}"
-        echo -e "${GREEN}MQTT notifications have been ENABLED for all properties.${NC}"
-        echo -e "\n${YELLOW}Note: If aliases don't appear in AWS console immediately, it may take a few minutes for them to propagate.${NC}"
     else
-        echo -e "\n${RED}The script encountered an error during execution or asset ID could not be determined.${NC}"
+        echo -e "${YELLOW}Warning: set_aliases.py not found. Skipping alias configuration.${NC}"
     fi
+    
+    echo -e "\n${GREEN}Asset setup complete!${NC}"
+    echo -e "${GREEN}Asset ID: ${CYAN}$ASSET_ID${NC}"
+    
+    # Show the user how to verify the asset properties
+    if [ -f "verify_asset_config.py" ]; then
+        echo -e "\n${GREEN}To verify the asset properties, run:${NC}"
+        echo -e "${CYAN}python verify_asset_config.py $ASSET_ID${NC}"
+    fi
+    
+    echo -e "\n${GREEN}You can now access your asset in the AWS IoT SiteWise console.${NC}"
+    echo -e "${GREEN}Navigate to Assets section to view your new asset.${NC}"
 else
-    echo -e "${YELLOW}Asset creation cancelled.${NC}"
+    echo -e "\n${RED}Failed to create the asset or extract the asset ID.${NC}"
 fi
-
-# Clean up temporary verification script
-rm -f verify_asset_config.py
 
 # Deactivate virtual environment
 deactivate
-
 echo -e "${CYAN}==============================================${NC}"

@@ -4,6 +4,7 @@ import time
 import json
 import sys
 import os
+import argparse
 from botocore.exceptions import ClientError
 
 # Import the configuration loader
@@ -530,81 +531,108 @@ def get_sitewise_asset_info():
         print(f"Error fetching SiteWise information: {e}")
         return None, None
 
-if __name__ == "__main__":
-    print("AWS IoT TwinMaker Entity Creator")
-    print("================================")
+def main():
+    """Main function to parse arguments and create TwinMaker entities"""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Create AWS IoT TwinMaker entities with IoT SiteWise connector')
+    parser.add_argument('workspace_id', nargs='?', help='The ID of the TwinMaker workspace')
+    parser.add_argument('--sitewise-asset-id', help='The ID of the SiteWise asset to connect')
+    parser.add_argument('--sitewise-model-id', help='The ID of the SiteWise model to connect')
+    parser.add_argument('--force-recreate', action='store_true', help='Delete and recreate entities if they exist')
+    parser.add_argument('--non-interactive', action='store_true', help='Run in non-interactive mode without prompts')
+    args = parser.parse_args()
     
-    # Initialize configuration
+    # Initialize the configuration loader
     config_loader = ConfigLoader()
-    initialize_env_from_config(config_loader)
     
-    # Process command line arguments
-    force_recreate = False
-    force_recreate_component_type = False
-    workspace_id = None
-    args = sys.argv[1:]
-    
-    # Process args
-    for i, arg in enumerate(args):
-        if arg == "--force-recreate" or arg == "-f":
-            force_recreate = True
-        elif arg == "--force-recreate-component" or arg == "-fc":
-            force_recreate_component_type = True
-        elif workspace_id is None and not arg.startswith("-"):
-            workspace_id = arg
-    
-    if force_recreate:
-        print("Force recreate mode: Will delete and recreate entity if it exists.")
-        
-    if force_recreate_component_type:
-        print("Force recreate component type: Will delete and recreate component type if it exists.")
-    
-    # Get workspace ID from args or environment or use default if not specified above
+    # Get workspace ID from argument, environment, or config
+    workspace_id = args.workspace_id
     if not workspace_id:
         workspace_config = config_loader.get_twinmaker_workspace_config()
-        workspace_id = os.environ.get('WORKSPACE_ID', workspace_config.get('id'))
-    print(f"Using workspace ID: {workspace_id}")
+        workspace_id = os.environ.get('WORKSPACE_ID', workspace_config.get('id', 'SimpleFactoryTwin'))
+        print(f"Using workspace ID: {workspace_id}")
     
-    # Get IoT SiteWise asset and model IDs for integration
-    sitewise_asset_id, sitewise_model_id = get_sitewise_asset_info()
+    # Get SiteWise asset and model IDs
+    sitewise_asset_id = args.sitewise_asset_id
+    sitewise_model_id = args.sitewise_model_id
     
-    # If we're forcing component type recreation, do it now
-    if force_recreate_component_type:
-        # Initialize TwinMaker client
-        twinmaker = boto3.client('iottwinmaker')
-        component_type_id = config_loader.get_component_types_config().get('motor', {}).get('id', 'MotorComponentType')
+    # In interactive mode, prompt for missing values
+    if not args.non_interactive:
+        if not sitewise_asset_id:
+            # Try to list SiteWise assets to help the user
+            sitewise = boto3.client('iotsitewise')
+            try:
+                # List assets
+                assets = sitewise.list_assets()
+                print("\nAvailable SiteWise assets:")
+                for asset in assets.get('assetSummaries', []):
+                    print(f"- {asset.get('name')} (ID: {asset.get('id')})")
+            except Exception as e:
+                print(f"Error listing SiteWise assets: {e}")
+            
+            print("\nProvide the SiteWise asset ID to connect to this entity.")
+            print("Leave empty to create an entity without SiteWise connection.")
+            sitewise_asset_id = input("SiteWise asset ID (optional): ").strip() or None
+            
+            if sitewise_asset_id:
+                # Try to get the model ID from the asset
+                try:
+                    asset_desc = sitewise.describe_asset(assetId=sitewise_asset_id)
+                    sitewise_model_id = asset_desc.get('assetModelId')
+                    print(f"Found SiteWise model ID: {sitewise_model_id}")
+                except Exception as e:
+                    print(f"Error retrieving SiteWise model ID: {e}")
+                    
+                    # Prompt for model ID if can't be automatically determined
+                    if not sitewise_model_id:
+                        # Try to list SiteWise models
+                        try:
+                            models = sitewise.list_asset_models()
+                            print("\nAvailable SiteWise models:")
+                            for model in models.get('assetModelSummaries', []):
+                                print(f"- {model.get('name')} (ID: {model.get('id')})")
+                        except Exception as e:
+                            print(f"Error listing SiteWise models: {e}")
+                        
+                        sitewise_model_id = input("SiteWise model ID: ").strip() or None
+            
+            # Ask about force recreate
+            force_recreate = input("\nForce recreate entities if they exist? (y/n): ").strip().lower() == 'y'
+        else:
+            # If asset ID is provided but not model ID, try to get it
+            if not sitewise_model_id and sitewise_asset_id:
+                try:
+                    sitewise = boto3.client('iotsitewise')
+                    asset_desc = sitewise.describe_asset(assetId=sitewise_asset_id)
+                    sitewise_model_id = asset_desc.get('assetModelId')
+                    print(f"Found SiteWise model ID: {sitewise_model_id}")
+                except Exception as e:
+                    print(f"Error retrieving SiteWise model ID: {e}")
+    else:
+        # In non-interactive mode, use values from arguments or config
+        if not sitewise_asset_id or not sitewise_model_id:
+            print("In non-interactive mode, relying on configuration files for any missing parameters")
         
-        # Check if entity exists first - need to delete it before deleting component type
-        entity_id = config_loader.get_entities_config().get('motor', {}).get('entityId', 'motor-scripted-1')
-        try:
-            # Try to get entity
-            twinmaker.get_entity(workspaceId=workspace_id, entityId=entity_id)
-            # If we got here, entity exists - delete it
-            delete_entity(workspace_id, entity_id, twinmaker)
-        except ClientError as e:
-            # Entity doesn't exist, can proceed
-            if "ResourceNotFoundException" not in str(e):
-                print(f"Unexpected error checking if entity exists: {e}")
-        
-        # Now try to delete component type
-        delete_component_type(workspace_id, component_type_id, twinmaker)
+        # Set force_recreate from args
+        force_recreate = args.force_recreate
     
-    # Create entity and components
-    created = create_twinmaker_entities(
-        workspace_id, 
-        config_loader,
-        sitewise_asset_id,
-        sitewise_model_id,
-        force_recreate
+    # Create the entities
+    result = create_twinmaker_entities(
+        workspace_id=workspace_id, 
+        config_loader=config_loader,
+        sitewise_asset_id=sitewise_asset_id, 
+        sitewise_model_id=sitewise_model_id,
+        force_recreate=force_recreate
     )
     
-    if created:
-        print("\nEntity created/updated successfully:")
-        for entity_type, entity_id in created.items():
+    if result:
+        print("\nSuccessfully created the following entities:")
+        for entity_type, entity_id in result.items():
             print(f"- {entity_type}: {entity_id}")
-        
-        # List all entities in the workspace
-        list_workspace_entities(workspace_id, config_loader)
+        return 0
     else:
-        print("\nFailed to create/update entity.")
-        sys.exit(1)
+        print("\nFailed to create some or all entities")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

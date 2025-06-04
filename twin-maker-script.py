@@ -1,11 +1,16 @@
 import boto3
 import time
 import json
+import argparse
 from botocore.exceptions import ClientError
 
-def create_twinmaker_workspace():
+def create_twinmaker_workspace(workspace_id=None, non_interactive=False):
     """
-    Creates an AWS IoT TwinMaker workspace for a simple factory digital twin
+    Creates an AWS IoT TwinMaker workspace for a factory digital twin
+    
+    Parameters:
+    workspace_id (str): Optional workspace ID to use (defaults to SimpleFactoryTwin)
+    non_interactive (bool): If True, use defaults without prompting
     """
     # Initialize the AWS IoT TwinMaker client
     twinmaker = boto3.client('iottwinmaker')
@@ -17,9 +22,14 @@ def create_twinmaker_workspace():
     s3 = boto3.client('s3')
     
     # Parameters
-    workspace_id = "SimpleFactoryTwin"
-    description = "Simple manufacturing cell digital twin"
-    bucket_name = input("Enter your S3 bucket name (or leave empty to create one): ").strip()
+    if not workspace_id:
+        workspace_id = "SimpleFactoryTwin"
+    description = f"{workspace_id} factory digital twin"
+    
+    if non_interactive:
+        bucket_name = ""
+    else:
+        bucket_name = input("Enter your S3 bucket name (or leave empty to create one): ").strip()
     
     # Create or validate S3 bucket
     if not bucket_name:
@@ -51,7 +61,7 @@ def create_twinmaker_workspace():
             return
             
     # Create prefix for TwinMaker assets
-    prefix = 'simple-factory'
+    prefix = workspace_id.lower()
     
     # Create or check service role
     role_name = "TwinMakerWorkspaceRole"
@@ -164,17 +174,6 @@ def create_twinmaker_workspace():
             print(f"Error checking IAM role: {e}")
             return
     
-    # Also attach AmazonS3ReadOnlyAccess managed policy for good measure
-    # try:
-    #     iam.attach_role_policy(
-    #         RoleName=role_name,
-    #         PolicyArn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
-    #     )
-    #     print("Attached AmazonS3ReadOnlyAccess policy to role")
-    #     time.sleep(5)  # Small delay for policy attachment to propagate
-    # except ClientError as e:
-    #     print(f"Warning: Could not attach S3 managed policy: {e}")
-    
     # Create the TwinMaker workspace
     try:
         print(f"Creating TwinMaker workspace: {workspace_id}")
@@ -196,9 +195,15 @@ def create_twinmaker_workspace():
         return None
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="AWS IoT TwinMaker Workspace Creator")
+    parser.add_argument("--workspace-id", type=str, help="ID for the TwinMaker workspace", default="SimpleFactoryTwin")
+    parser.add_argument("--non-interactive", action="store_true", help="Run in non-interactive mode")
+    args = parser.parse_args()
+    
     print("AWS IoT TwinMaker Workspace Creator")
     print("===================================")
-    workspace_arn = create_twinmaker_workspace()
+    workspace_arn = create_twinmaker_workspace(workspace_id=args.workspace_id, non_interactive=args.non_interactive)
     if workspace_arn:
         print("\nWorkspace setup complete!")
         print("You can now access your workspace in the AWS IoT TwinMaker console.")

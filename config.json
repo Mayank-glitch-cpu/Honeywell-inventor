@@ -8,11 +8,11 @@
   },
   "twinmaker": {
     "workspace": {
-      "id": "SimpleFactoryTwin",
-      "description": "Simple manufacturing cell digital twin",
+      "id": "CookieFactoryTwin",
+      "description": "Cookie factory digital twin",
       "s3": {
         "bucket_name": "",
-        "prefix": "simple-factory"
+        "prefix": "cookie-factory"
       },
       "role": {
         "name": "TwinMakerWorkspaceRole",
@@ -54,19 +54,19 @@
       }
     },
     "components": {
-      "motor": {
-        "id": "MotorComponentType",
-        "description": "Industrial motor with speed and power monitoring",
+      "dough_mixer": {
+        "id": "DoughMixerComponentType",
+        "description": "Industrial dough mixer with speed and temperature monitoring",
         "properties": {
-          "Speed": {
-            "dataType": "DOUBLE",
+          "MixerSpeed": {
+            "dataType": "INTEGER",
             "unitOfMeasure": "RPM",
             "isTimeSeries": false,
             "isRequiredInEntity": false
           },
-          "PowerConsumption": {
+          "DoughTemperature": {
             "dataType": "DOUBLE",
-            "unitOfMeasure": "kW",
+            "unitOfMeasure": "\u00b0C",
             "isTimeSeries": false
           },
           "Status": {
@@ -74,36 +74,133 @@
           },
           "SerialNumber": {
             "dataType": "STRING"
+          }
+        }
+      },
+      "cookie_cutter": {
+        "id": "CookieCutterComponentType",
+        "description": "Cookie cutter with operational status and production tracking",
+        "properties": {
+          "OperationalStatus": {
+            "dataType": "BOOLEAN",
+            "isTimeSeries": false,
+            "isRequiredInEntity": false
           },
-          "MaintenanceDue": {
+          "CookiesCutPerMinute": {
+            "dataType": "INTEGER",
+            "unitOfMeasure": "cookies/min",
+            "isTimeSeries": false
+          },
+          "TotalCookiesCut": {
+            "dataType": "INTEGER",
+            "unitOfMeasure": "cookies",
+            "isTimeSeries": true
+          },
+          "SerialNumber": {
+            "dataType": "STRING"
+          }
+        }
+      },
+      "conveyor_oven": {
+        "id": "ConveyorOvenComponentType",
+        "description": "Conveyor oven with temperature control and production tracking",
+        "properties": {
+          "OvenTemperature": {
+            "dataType": "DOUBLE",
+            "unitOfMeasure": "\u00b0C",
+            "isTimeSeries": false,
+            "isRequiredInEntity": false
+          },
+          "CookiesPerHour": {
+            "dataType": "INTEGER",
+            "unitOfMeasure": "cookies/hr",
+            "isTimeSeries": false
+          },
+          "TotalCookiesProduced": {
+            "dataType": "INTEGER",
+            "unitOfMeasure": "cookies",
+            "isTimeSeries": true
+          },
+          "Status": {
+            "dataType": "STRING"
+          },
+          "SerialNumber": {
             "dataType": "STRING"
           }
         }
       }
     },
     "entities": {
-      "motor": {
-        "entityName": "motor-scripted-1",
-        "entityId": "motor-scripted-1",
-        "description": "Motor entity synchronized with SiteWise asset",
+      "dough_mixer": {
+        "entityName": "dough-mixer-1",
+        "entityId": "dough-mixer-1",
+        "description": "Dough mixer for cookie production",
         "components": {
-          "MotorComponent": {
-            "componentTypeId": "MotorComponentType",
+          "DoughMixerComponent": {
+            "componentTypeId": "DoughMixerComponentType",
             "properties": {
-              "Speed": {
-                "doubleValue": 1750.0
+              "MixerSpeed": {
+                "integerValue": 120
               },
-              "PowerConsumption": {
-                "doubleValue": 5.5
+              "DoughTemperature": {
+                "doubleValue": 24.5
               },
               "Status": {
                 "stringValue": "RUNNING"
               },
               "SerialNumber": {
-                "stringValue": "MOTOR-SCRIPTED-001"
+                "stringValue": "MIXER-001"
+              }
+            }
+          }
+        }
+      },
+      "cookie_cutter": {
+        "entityName": "cookie-cutter-1",
+        "entityId": "cookie-cutter-1",
+        "description": "Cookie cutter for shaping cookies",
+        "components": {
+          "CookieCutterComponent": {
+            "componentTypeId": "CookieCutterComponentType",
+            "properties": {
+              "OperationalStatus": {
+                "booleanValue": true
               },
-              "MaintenanceDue": {
-                "stringValue": "2024-12-31"
+              "CookiesCutPerMinute": {
+                "integerValue": 120
+              },
+              "TotalCookiesCut": {
+                "integerValue": 0
+              },
+              "SerialNumber": {
+                "stringValue": "CUTTER-001"
+              }
+            }
+          }
+        }
+      },
+      "conveyor_oven": {
+        "entityName": "conveyor-oven-1",
+        "entityId": "conveyor-oven-1",
+        "description": "Conveyor oven for baking cookies",
+        "components": {
+          "ConveyorOvenComponent": {
+            "componentTypeId": "ConveyorOvenComponentType",
+            "properties": {
+              "OvenTemperature": {
+                "doubleValue": 180.0
+              },
+              "CookiesPerHour": {
+                "integerValue": 1800
+              },
+              "TotalCookiesProduced": {
+                "integerValue": 0
+              },
+              "Status": {
+                "stringValue": "RUNNING"
+              },
+              "SerialNumber": {
+                "stringValue": "OVEN-001"
               }
             }
           }
@@ -112,42 +209,166 @@
     }
   },
   "sitewise": {
-    "model": {
-      "name": "Motor-scripted",
-      "description": "Motor model with serial number and speed measurement",
-      "properties": [
-        {
-          "name": "Serial",
-          "dataType": "STRING",
-          "type": {
-            "attribute": {
-              "defaultValue": "DEFAULT-SERIAL-00001"
+    "models": {
+      "dough_mixer": {
+        "name": "DoughMixer",
+        "description": "Dough mixer model with speed and temperature monitoring",
+        "properties": [
+          {
+            "name": "Serial",
+            "dataType": "STRING",
+            "type": {
+              "attribute": {
+                "defaultValue": "MIXER-001"
+              }
+            }
+          },
+          {
+            "name": "MixerSpeed",
+            "dataType": "INTEGER",
+            "unit": "RPM",
+            "alias": "mixer_speed",
+            "type": {
+              "measurement": {}
+            }
+          },
+          {
+            "name": "DoughTemperature",
+            "dataType": "DOUBLE",
+            "unit": "\u00b0C",
+            "alias": "dough_temp",
+            "type": {
+              "measurement": {}
             }
           }
-        },
-        {
-          "name": "Speed",
-          "dataType": "DOUBLE",
-          "unit": "RPM",
-          "alias": "motor_speed",
-          "type": {
-            "measurement": {}
-          }
-        }
-      ]
-    },
-    "asset": {
-      "name_template": "motor12-{index}",
-      "index": 2,
-      "serial_template": "MOTOR-SCRIPTED-{asset_id}",
-      "alias_template": "{model_name}/{asset_name}",
-      "asset_alias": "{model_name}/{asset_name}",
-      "property_aliases": {
-        "Speed": "{model_name}/{asset_name}/speed",
-        "Serial": "{model_name}/{asset_name}/serial",
-        "speed": "{model_name}/{asset_name}/speed"
+        ]
       },
-      "notification_state": "ENABLED"
+      "cookie_cutter": {
+        "name": "CookieCutter",
+        "description": "Cookie cutter model with operational status and production tracking",
+        "properties": [
+          {
+            "name": "Serial",
+            "dataType": "STRING",
+            "type": {
+              "attribute": {
+                "defaultValue": "CUTTER-001"
+              }
+            }
+          },
+          {
+            "name": "OperationalStatus",
+            "dataType": "BOOLEAN",
+            "alias": "operational_status",
+            "type": {
+              "attribute": {
+                "defaultValue": "true"
+              }
+            }
+          },
+          {
+            "name": "CookiesCutPerMinute",
+            "dataType": "INTEGER",
+            "unit": "cookies/min",
+            "alias": "cookies_per_min",
+            "type": {
+              "measurement": {}
+            }
+          },
+          {
+            "name": "TotalCookiesCut",
+            "dataType": "INTEGER",
+            "unit": "cookies",
+            "alias": "total_cookies",
+            "type": {
+              "measurement": {}
+            }
+          }
+        ]
+      },
+      "conveyor_oven": {
+        "name": "ConveyorOven",
+        "description": "Conveyor oven model with temperature control and production tracking",
+        "properties": [
+          {
+            "name": "Serial",
+            "dataType": "STRING",
+            "type": {
+              "attribute": {
+                "defaultValue": "OVEN-001"
+              }
+            }
+          },
+          {
+            "name": "OvenTemperature",
+            "dataType": "DOUBLE",
+            "unit": "\u00b0C",
+            "alias": "oven_temp",
+            "type": {
+              "measurement": {}
+            }
+          },
+          {
+            "name": "CookiesPerHour",
+            "dataType": "INTEGER",
+            "unit": "cookies/hr",
+            "alias": "cookies_per_hour",
+            "type": {
+              "measurement": {}
+            }
+          },
+          {
+            "name": "TotalCookiesProduced",
+            "dataType": "INTEGER",
+            "unit": "cookies",
+            "alias": "total_produced",
+            "type": {
+              "measurement": {}
+            }
+          }
+        ]
+      }
+    },
+    "assets": {
+      "dough_mixer": {
+        "name_template": "dough-mixer-{index}",
+        "index": 3,
+        "serial_template": "MIXER-{asset_id}",
+        "alias_template": "{model_name}/{asset_name}",
+        "asset_alias": "{model_name}/{asset_name}",
+        "property_aliases": {
+          "MixerSpeed": "mixer_speed",
+          "DoughTemperature": "dough_temp"
+        },
+        "notification_state": "ENABLED"
+      },
+      "cookie_cutter": {
+        "name_template": "cookie-cutter-{index}",
+        "index": 3,
+        "serial_template": "CUTTER-{asset_id}",
+        "alias_template": "{model_name}/{asset_name}",
+        "asset_alias": "{model_name}/{asset_name}",
+        "property_aliases": {
+          "OperationalStatus": "operational_status",
+          "CookiesCutPerMinute": "cookies_per_min",
+          "TotalCookiesCut": "total_cookies"
+        },
+        "notification_state": "ENABLED"
+      },
+      "conveyor_oven": {
+        "name_template": "conveyor-oven-{index}",
+        "index": 3,
+        "serial_template": "OVEN-{asset_id}",
+        "alias_template": "{model_name}/{asset_name}",
+        "asset_alias": "{model_name}/{asset_name}",
+        "property_aliases": {
+          "OvenTemperature": "{model_name}/{asset_name}/oven_temp",
+          "CookiesPerHour": "{model_name}/{asset_name}/cookies_per_hour",
+          "TotalCookiesProduced": "{model_name}/{asset_name}/total_produced",
+          "Serial": "{model_name}/{asset_name}/serial"
+        },
+        "notification_state": "ENABLED"
+      }
     }
   },
   "environment": {

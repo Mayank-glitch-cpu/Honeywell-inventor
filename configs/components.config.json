@@ -1,0 +1,79 @@
+{
+  "components": {
+    "dough_mixer": {
+      "id": "DoughMixerComponentType",
+      "description": "Industrial dough mixer with speed and temperature monitoring",
+      "properties": {
+        "MixerSpeed": {
+          "dataType": "INTEGER",
+          "unitOfMeasure": "RPM",
+          "isTimeSeries": false,
+          "isRequiredInEntity": false
+        },
+        "DoughTemperature": {
+          "dataType": "DOUBLE",
+          "unitOfMeasure": "°C",
+          "isTimeSeries": false
+        },
+        "Status": {
+          "dataType": "STRING"
+        },
+        "SerialNumber": {
+          "dataType": "STRING"
+        }
+      }
+    },
+    "cookie_cutter": {
+      "id": "CookieCutterComponentType",
+      "description": "Cookie cutter with operational status and production tracking",
+      "properties": {
+        "OperationalStatus": {
+          "dataType": "BOOLEAN",
+          "isTimeSeries": false,
+          "isRequiredInEntity": false
+        },
+        "CookiesCutPerMinute": {
+          "dataType": "INTEGER",
+          "unitOfMeasure": "cookies/min",
+          "isTimeSeries": false
+        },
+        "TotalCookiesCut": {
+          "dataType": "INTEGER",
+          "unitOfMeasure": "cookies",
+          "isTimeSeries": true
+        },
+        "SerialNumber": {
+          "dataType": "STRING"
+        }
+      }
+    },
+    "conveyor_oven": {
+      "id": "ConveyorOvenComponentType",
+      "description": "Conveyor oven with temperature control and production tracking",
+      "properties": {
+        "OvenTemperature": {
+          "dataType": "DOUBLE",
+          "unitOfMeasure": "°C",
+          "isTimeSeries": false,
+          "isRequiredInEntity": false
+        },
+        "CookiesPerHour": {
+          "dataType": "INTEGER",
+          "unitOfMeasure": "cookies/hr",
+          "isTimeSeries": false
+        },
+        "TotalCookiesProduced": {
+          "dataType": "INTEGER",
+          "unitOfMeasure": "cookies",
+          "isTimeSeries": true
+        },
+        "Status": {
+          "dataType": "STRING"
+        },
+        "SerialNumber": {
+          "dataType": "STRING"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "dough_mixer": {
+      "entityName": "dough-mixer-1",
+      "entityId": "dough-mixer-1",
+      "description": "Dough mixer for cookie production",
+      "components": {
+        "DoughMixerComponent": {
+          "componentTypeId": "DoughMixerComponentType",
+          "properties": {
+            "MixerSpeed": {
+              "integerValue": 120
+            },
+            "DoughTemperature": {
+              "doubleValue": 24.5
+            },
+            "Status": {
+              "stringValue": "RUNNING"
+            },
+            "SerialNumber": {
+              "stringValue": "MIXER-001"
+            }
+          }
+        }
+      }
+    },
+    "cookie_cutter": {
+      "entityName": "cookie-cutter-1",
+      "entityId": "cookie-cutter-1",
+      "description": "Cookie cutter for shaping cookies",
+      "components": {
+        "CookieCutterComponent": {
+          "componentTypeId": "CookieCutterComponentType",
+          "properties": {
+            "OperationalStatus": {
+              "booleanValue": true
+            },
+            "CookiesCutPerMinute": {
+              "integerValue": 120
+            },
+            "TotalCookiesCut": {
+              "integerValue": 0
+            },
+            "SerialNumber": {
+              "stringValue": "CUTTER-001"
+            }
+          }
+        }
+      }
+    },
+    "conveyor_oven": {
+      "entityName": "conveyor-oven-1",
+      "entityId": "conveyor-oven-1",
+      "description": "Conveyor oven for baking cookies",
+      "components": {
+        "ConveyorOvenComponent": {
+          "componentTypeId": "ConveyorOvenComponentType",
+          "properties": {
+            "OvenTemperature": {
+              "doubleValue": 180.0
+            },
+            "CookiesPerHour": {
+              "integerValue": 1800
+            },
+            "TotalCookiesProduced": {
+              "integerValue": 0
+            },
+            "Status": {
+              "stringValue": "RUNNING"
+            },
+            "SerialNumber": {
+              "stringValue": "OVEN-001"
+            }
+          }
+        }
+      }
+    }
+  }
+}

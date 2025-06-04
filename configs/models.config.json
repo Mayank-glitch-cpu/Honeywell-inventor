@@ -1,0 +1,165 @@
+{
+  "models": {
+    "dough_mixer": {
+      "name": "DoughMixer-1",
+      "description": "Dough mixer model with speed and temperature monitoring",
+      "properties": [
+        {
+          "name": "Serial",
+          "dataType": "STRING",
+          "type": {
+            "attribute": {
+              "defaultValue": "MIXER-001"
+            }
+          }
+        },
+        {
+          "name": "MixerSpeed",
+          "dataType": "INTEGER",
+          "unit": "RPM",
+          "alias": "mixer_speed",
+          "type": {
+            "measurement": {}
+          }
+        },
+        {
+          "name": "DoughTemperature",
+          "dataType": "DOUBLE",
+          "unit": "\u00b0C",
+          "alias": "dough_temp",
+          "type": {
+            "measurement": {}
+          }
+        }
+      ]
+    },
+    "cookie_cutter": {
+      "name": "CookieCutter-1",
+      "description": "Cookie cutter model with operational status and production tracking",
+      "properties": [
+        {
+          "name": "Serial",
+          "dataType": "STRING",
+          "type": {
+            "attribute": {
+              "defaultValue": "CUTTER-001"
+            }
+          }
+        },
+        {
+          "name": "OperationalStatus",
+          "dataType": "BOOLEAN",
+          "alias": "operational_status",
+          "type": {
+            "attribute": {
+              "defaultValue": "true"
+            }
+          }
+        },
+        {
+          "name": "CookiesCutPerMinute",
+          "dataType": "INTEGER",
+          "unit": "cookies/min",
+          "alias": "cookies_per_min",
+          "type": {
+            "measurement": {}
+          }
+        },
+        {
+          "name": "TotalCookiesCut",
+          "dataType": "INTEGER",
+          "unit": "cookies",
+          "alias": "total_cookies",
+          "type": {
+            "measurement": {}
+          }
+        }
+      ]
+    },
+    "conveyor_oven": {
+      "name": "ConveyorOven-1",
+      "description": "Conveyor oven model with temperature control and production tracking",
+      "properties": [
+        {
+          "name": "Serial",
+          "dataType": "STRING",
+          "type": {
+            "attribute": {
+              "defaultValue": "OVEN-001"
+            }
+          }
+        },
+        {
+          "name": "OvenTemperature",
+          "dataType": "DOUBLE",
+          "unit": "\u00b0C",
+          "alias": "oven_temp",
+          "type": {
+            "measurement": {}
+          }
+        },
+        {
+          "name": "CookiesPerHour",
+          "dataType": "INTEGER",
+          "unit": "cookies/hr",
+          "alias": "cookies_per_hour",
+          "type": {
+            "measurement": {}
+          }
+        },
+        {
+          "name": "TotalCookiesProduced",
+          "dataType": "INTEGER",
+          "unit": "cookies",
+          "alias": "total_produced",
+          "type": {
+            "measurement": {}
+          }
+        }
+      ]
+    }
+  },
+  "assets": {
+    "dough_mixer": {
+      "name_template": "dough-mixer-{index}",
+      "index": 1,
+      "serial_template": "MIXER-{asset_id}",
+      "alias_template": "{model_name}/{asset_name}",
+      "asset_alias": "{model_name}/{asset_name}",
+      "property_aliases": {
+        "cf2cbd37-7b84-4d39-ab2f-24acf9dc2b67": "mixer_speed",
+        "d477fbac-536d-43a6-8455-09548b279f8b": "dough_temp"
+      },
+      "notification_state": "ENABLED",
+      "model_id": "22370298-0980-4d43-92e8-0c0bab61789d"
+    },
+    "cookie_cutter": {
+      "name_template": "cookie-cutter-{index}",
+      "index": 1,
+      "serial_template": "CUTTER-{asset_id}",
+      "alias_template": "{model_name}/{asset_name}",
+      "asset_alias": "{model_name}/{asset_name}",
+      "property_aliases": {
+        "eec032d7-7b76-4678-aa8f-f967f447a076": "operational_status",
+        "5cf25d81-8e1b-4429-b808-90d144e6dc58": "cookies_per_min",
+        "3df5ce7f-e87e-4ea7-8b7a-fbdd04bd6470": "total_cookies"
+      },
+      "notification_state": "ENABLED",
+      "model_id": "dee3f9d1-919c-488f-ab3f-8a5bae8009c7"
+    },
+    "conveyor_oven": {
+      "name_template": "conveyor-oven-{index}",
+      "index": 1,
+      "serial_template": "OVEN-{asset_id}",
+      "alias_template": "{model_name}/{asset_name}",
+      "asset_alias": "{model_name}/{asset_name}",
+      "property_aliases": {
+        "9e1a2b7c-ec93-4f16-bd67-e19f45e9e1db": "oven_temp",
+        "dcf0b644-0ff2-4281-960c-16a943a3202f": "cookies_per_hour",
+        "ef4b8265-3db6-49da-81e8-f54a2ae9b5f4": "total_produced"
+      },
+      "notification_state": "ENABLED",
+      "model_id": "2868518a-578e-452b-af2b-333518597135"
+    }
+  }
+}

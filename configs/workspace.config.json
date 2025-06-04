@@ -1,0 +1,66 @@
+{
+  "aws": {
+    "credentials": {
+      "access_key_id": "AKIA46ZDFHBNNFSQQG4C",
+      "secret_access_key": "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",
+      "region": "us-east-1"
+    }
+  },
+  "twinmaker": {
+    "workspace": {
+      "id": "CookieFactoryTwin",
+      "description": "Cookie factory digital twin",
+      "s3": {
+        "bucket_name": "",
+        "prefix": "cookie-factory"
+      },
+      "role": {
+        "name": "TwinMakerWorkspaceRole",
+        "trust_policy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "iottwinmaker.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "access_policies": [
+          {
+            "name": "TwinMakerS3Access",
+            "document": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                    "s3:ListBucket"
+                  ],
+                  "Resource": [
+                    "arn:aws:s3:::{bucket_name}",
+                    "arn:aws:s3:::{bucket_name}/*"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "environment": {
+    "venv_path": "venv-sitewise",
+    "scripts": {
+      "twinmaker_workspace": "run.sh",
+      "sitewise_model": "run-sitewise-model.sh",
+      "sitewise_asset": "run-sitewise-asset.sh",
+      "twinmaker_entities": "run-twinmaker-entities.sh"
+    }
+  }
+}
