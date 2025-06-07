@@ -1,9 +1,9 @@
 {
   "aws": {
     "credentials": {
-      "access_key_id": "AKIA46ZDFHBNNFSQQG4C",
-      "secret_access_key": "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",
-      "region": "us-east-1"
+      "access_key_id": "${AWS_ACCESS_KEY_ID}",
+      "secret_access_key": "${AWS_SECRET_ACCESS_KEY}",
+      "region": "${AWS_REGION}"
     }
   },
   "twinmaker": {

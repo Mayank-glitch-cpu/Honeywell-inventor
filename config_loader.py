@@ -3,6 +3,7 @@ import json
 import os
 import sys
 from typing import Dict, Any, Optional, List
+from dotenv import load_dotenv
 
 
 class ConfigLoader:
@@ -12,10 +13,22 @@ class ConfigLoader:
     """
     def __init__(self, config_dir: str = 'configs'):
         """Initialize the ConfigLoader with a path to the config directory"""
+        # Load environment variables from .env file
+        load_dotenv()
+        
         self.config_dir = config_dir
         self.config_file = 'config.json'
         self.config = self._load_config()
         
+    def _substitute_env_vars(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Substitute environment variables in config values"""
+        if isinstance(config, dict):
+            return {k: self._substitute_env_vars(v) for k, v in config.items()}
+        elif isinstance(config, str) and config.startswith('${') and config.endswith('}'):
+            env_var = config[2:-1]
+            return os.getenv(env_var, config)
+        return config
+    
     def _load_config(self) -> Dict[str, Any]:
         """Load the configuration from the modular JSON files or fallback to config.json"""
         config = {}
