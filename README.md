@@ -1,6 +1,6 @@
 # AWS IoT TwinMaker & SiteWise Integration
 
-This repository provides scripts to set up and configure an AWS IoT TwinMaker workspace with IoT SiteWise assets for industrial digital twin applications.
+This repository provides scripts and a web interface to set up and configure an AWS IoT TwinMaker workspace with IoT SiteWise assets for industrial digital twin applications.
 
 ## Overview
 
@@ -9,66 +9,107 @@ This project enables the creation of digital twins for industrial systems using 
 1. **TwinMaker Workspace Creation**: Set up a TwinMaker workspace with necessary IAM roles and S3 storage
 2. **IoT SiteWise Model Creation**: Define asset models with properties, measurements, and attributes
 3. **IoT SiteWise Asset Creation**: Instantiate assets from models and configure MQTT notifications
-4. **Integration Flow**: Connect TwinMaker with SiteWise assets for comprehensive digital twin capabilities
+4. **TwinMaker Entity Creation**: Create component types and entities linked to SiteWise assets
+5. **Integration Flow**: Connect TwinMaker with SiteWise assets for comprehensive digital twin capabilities
+6. **FastAPI Web Interface**: Manage and monitor your digital twin infrastructure through a modern web UI
 
 ## Prerequisites
 
 - AWS Account with appropriate permissions
 - Python 3.6+
-- AWS CLI configured locally (or use the provided credentials)
+- AWS CLI configured locally (or use environment variables)
 - `boto3` Python SDK
 
 ## Project Structure
 
 ```
 Honeywell-inventor/
+├── configs/                     # Modular configuration files
+│   ├── workspace.config.json    # TwinMaker workspace and AWS credentials
+│   ├── models.config.json       # SiteWise model definitions
+│   ├── entities.config.json     # TwinMaker entity definitions
+│   └── components.config.json   # TwinMaker component type definitions
 ├── master-setup.sh              # Master script to orchestrate the entire flow
 ├── run.sh                       # Script to create TwinMaker workspace
 ├── twin-maker-script.py         # Python implementation for TwinMaker workspace
-├── run-twinmaker-cdk.py         # CDK implementation for TwinMaker (alternative)
-├── run-cdk.sh                   # Script to run CDK deployment
 ├── run-sitewise-model.sh        # Script to create IoT SiteWise model
 ├── create-iotsitewise-model.py  # Python implementation for SiteWise model creation
 ├── run-sitewise-asset.sh        # Script to create IoT SiteWise asset
 ├── create-iotsitewise-asset.py  # Python implementation for SiteWise asset creation
+├── run-twinmaker-entities.sh    # Script to create TwinMaker entities
+├── create-twinmaker-entities.py # Python implementation for TwinMaker entities
+├── config_loader.py             # Modular configuration management system
+├── set_aliases.py               # Configure SiteWise asset property aliases
+├── app.py                       # FastAPI web application (if present)
 ├── requirements.txt             # Python dependencies
-└── rootkey.csv                  # AWS credentials (included for convenience)
+└── .env                         # Environment variables (create this file)
 ```
 
 ## Installation
 
 1. Clone this repository
 2. Install Python dependencies:
-   ```
+   ```bash
    pip install -r requirements.txt
    ```
+3. Create a `.env` file with your AWS credentials:
+   ```bash
+   AWS_ACCESS_KEY_ID=your_access_key_here
+   AWS_SECRET_ACCESS_KEY=your_secret_key_here
+   AWS_REGION=us-east-1
+   ```
+
+## Configuration
+
+The project uses a modular configuration system with JSON files in the `configs/` directory:
+
+- **workspace.config.json**: AWS credentials, TwinMaker workspace settings, and IAM roles
+- **models.config.json**: SiteWise asset model definitions with properties and measurements
+- **entities.config.json**: TwinMaker entity definitions and component mappings
+- **components.config.json**: TwinMaker component type definitions
 
 ## Usage
 
 ### Option 1: Using the Master Script (Recommended)
 
-The master script provides a unified interface for all functionality:
+The master script provides automated end-to-end deployment:
 
 ```bash
 ./master-setup.sh
 ```
 
-The script will present options to:
-1. Create TwinMaker workspace
-2. Create IoT SiteWise model
-3. Create IoT SiteWise asset
-4. Run the full setup process end-to-end
+This will automatically:
+1. Create TwinMaker workspace with proper IAM roles
+2. Create all SiteWise models defined in configuration
+3. Create SiteWise assets for each model type
+4. Set up property aliases and MQTT notifications
+5. Create TwinMaker entities linked to SiteWise assets
+6. Generate data sender scripts for testing
 
-### Option 2: Running Individual Scripts
+### Option 2: FastAPI Web Interface
+
+If you have the FastAPI web application, start the web server:
+
+```bash
+python app.py
+```
+
+Then access the web interface at `http://localhost:8000` to:
+- Monitor deployment status
+- View real-time metrics
+- Manage digital twin components
+- Access operational dashboards
+
+### Option 3: Running Individual Scripts
 
 #### TwinMaker Workspace Setup
 
 ```bash
-./run.sh
+./run.sh --workspace-id CookieFactoryTwin
 ```
 
 This creates:
-- AWS IoT TwinMaker workspace named "SimpleFactoryTwin"
+- AWS IoT TwinMaker workspace with configured ID
 - Required IAM roles with appropriate permissions
 - S3 bucket for storing workspace data
 
@@ -78,87 +119,123 @@ This creates:
 ./run-sitewise-model.sh
 ```
 
-This creates a model named "Motor-scripted" with:
-- String attribute: "Serial" (with default value)
-- Double measurement: "Speed" (with unit RPM)
+This creates models based on your configuration with:
+- Defined properties, measurements, and attributes
+- Proper data types and units
+- Hierarchical model relationships
 
 #### IoT SiteWise Asset Creation
 
 ```bash
-./run-sitewise-asset.sh <model-id>
+./run-sitewise-asset.sh <model-id> <model-type>
 ```
 
 This creates:
 - Asset based on the specified model
 - Enables MQTT notifications for all properties
-- Sets a unique serial number for the asset
+- Configures property aliases for easy data access
+
+#### TwinMaker Entity Creation
+
+```bash
+./run-twinmaker-entities.sh <workspace-id>
+```
+
+This creates:
+- Component types linked to SiteWise models
+- Entities synchronized with SiteWise assets
+- Property mappings for real-time data flow
 
 ## Workflow Details
 
-### TwinMaker Setup Flow
+### Complete Setup Flow
 
-1. Create or validate virtual environment
-2. Install required dependencies
-3. Configure AWS credentials
-4. Create/validate S3 bucket for asset storage
-5. Create/validate IAM role for TwinMaker
-6. Create TwinMaker workspace
-7. (Optional) Configure component types and entities
+1. **Environment Setup**: Create virtual environment and install dependencies
+2. **Configuration Loading**: Parse modular configuration files
+3. **AWS Credential Validation**: Verify and configure AWS access
+4. **TwinMaker Workspace**: Create workspace with IAM roles and S3 storage
+5. **SiteWise Models**: Create asset models based on configuration
+6. **SiteWise Assets**: Instantiate assets from models with notifications
+7. **Property Aliases**: Configure MQTT-friendly property paths
+8. **TwinMaker Entities**: Create digital twin entities linked to physical assets
+9. **Data Generators**: Set up scripts for testing and simulation
 
-### SiteWise Model Creation Flow
+### Configuration Management
 
-1. Create virtual environment with required dependencies
-2. Configure AWS credentials and region
-3. Create SiteWise asset model with defined properties
-4. Wait for the model to become active
-5. Return the model ID for asset creation
-
-### SiteWise Asset Creation Flow
-
-1. Use existing virtual environment
-2. Verify model exists and is active
-3. Create asset based on the model
-4. Wait for asset to become active
-5. Enable MQTT notifications for all properties
-6. Update asset property values (e.g., unique serial number)
+The `ConfigLoader` class provides:
+- Environment variable substitution
+- Modular configuration file loading
+- Fallback to monolithic config.json
+- Validation and error handling
+- Dynamic configuration updates
 
 ## Integration with AWS IoT TwinMaker
 
-After creating both the TwinMaker workspace and SiteWise assets:
+After deployment:
 
-1. In the TwinMaker console, navigate to the workspace
-2. Create a connection to SiteWise in the workspace settings
-3. Import the SiteWise model and assets as component types and entities
-4. Create scenes to visualize the digital twin
+1. **TwinMaker Console**: Navigate to your workspace to view entities and scenes
+2. **SiteWise Integration**: Entities are automatically linked to SiteWise assets
+3. **Real-time Data**: Property values flow from SiteWise to TwinMaker
+4. **3D Visualization**: Create scenes to visualize your digital twin
+5. **Monitoring Dashboards**: Use the web interface for operational insights
 
 ## Security Notes
 
-- The repository includes AWS credentials for demonstration purposes
-- In production, use more secure methods (IAM roles, environment variables, AWS Secrets Manager)
-- Remove hardcoded credentials and use AWS best practices for credential management
+- Store AWS credentials in `.env` file (never commit to git)
+- Use IAM roles with least privilege principles
+- Environment variables are substituted in configuration files
+- The project supports both credential files and environment variables
+- In production, use AWS IAM roles or AWS Secrets Manager
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **AWS Credential Errors**:
-   - Confirm credentials in `.env` or `rootkey.csv` are valid
-   - Verify AWS CLI configuration with `aws configure`
+   - Verify credentials in `.env` file are valid
+   - Check AWS CLI configuration with `aws configure`
+   - Ensure proper IAM permissions for TwinMaker and SiteWise
 
 2. **Virtual Environment Issues**:
    - Ensure Python 3.6+ is installed
    - Install `python3-venv` if missing (`sudo apt-get install python3-venv`)
 
-3. **SiteWise Model/Asset Creation Failures**:
+3. **Configuration Errors**:
+   - Validate JSON syntax in config files
+   - Check environment variable substitution
+   - Verify model and entity definitions
+
+4. **SiteWise Model/Asset Creation Failures**:
    - Check for proper IAM permissions
    - Verify region compatibility for SiteWise
-   - Check the status of created resources in AWS console
+   - Ensure model IDs are correctly formatted
 
 ### Specific Error Solutions
 
-- **"Externally managed environment" Error**: Scripts now handle this correctly using virtual environments
-- **Asset Creation Fails**: Ensure the model ID is correct and the model is in ACTIVE state
+- **"Externally managed environment" Error**: Scripts use isolated virtual environments
+- **Asset Creation Fails**: Verify model ID format and model ACTIVE state
 - **TwinMaker Workspace Creation Fails**: Check IAM permissions and S3 bucket access
+- **Entity Creation Fails**: Ensure SiteWise assets exist and are properly configured
+
+## Data Generation and Testing
+
+After setup, use the generated scripts to send test data:
+
+```bash
+# Example for different model types
+./send-motor-data.sh
+./send-sensor-data.sh
+./send-conveyor-data.sh
+```
+
+## Monitoring and Metrics
+
+The system provides:
+- Real-time asset property monitoring
+- MQTT notification tracking
+- Entity status validation
+- Configuration drift detection
+- Performance metrics via web interface
 
 ## Contributing
 
