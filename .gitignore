@@ -7,3 +7,12 @@ venv-sitewise/
 __pycache__/
 *.py[cod]
 *$py.class
+# ignore the config files 
+config.ini
+configs/
+config.json
+# Ignore Jupyter Notebook checkpoints
+rootkey.csvrun-twinmaker.sh
+
+run-cdk.sh
+
